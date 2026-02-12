@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.models.transaction import FeeInfo, NormalizedTransaction
 
-RPC_TIMEOUT = 0.6
+RPC_TIMEOUT = 5.0
 
 
 async def fetch_solana_transaction(signature: str) -> NormalizedTransaction:

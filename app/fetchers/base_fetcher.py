@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.models.transaction import FeeInfo, NormalizedTransaction
 
-RPC_TIMEOUT = 0.6
+RPC_TIMEOUT = 5.0
 
 
 def _rpc_payload(method: str, params: list, req_id: int = 1) -> dict:
