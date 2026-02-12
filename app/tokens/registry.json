@@ -1,0 +1,171 @@
+{
+  "base": {
+    "native": {
+      "symbol": "ETH",
+      "name": "Ethereum",
+      "decimals": 18
+    },
+    "0x4200000000000000000000000000000000000006": {
+      "symbol": "WETH",
+      "name": "Wrapped Ether",
+      "decimals": 18
+    },
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": {
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6
+    },
+    "0x50c5725949a6f0c72e6c4a641f24049a917db0cb": {
+      "symbol": "DAI",
+      "name": "Dai Stablecoin",
+      "decimals": 18
+    },
+    "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": {
+      "symbol": "USDbC",
+      "name": "USD Base Coin",
+      "decimals": 6
+    },
+    "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22": {
+      "symbol": "cbETH",
+      "name": "Coinbase Wrapped Staked ETH",
+      "decimals": 18
+    },
+    "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452": {
+      "symbol": "wstETH",
+      "name": "Wrapped Liquid Staked Ether",
+      "decimals": 18
+    },
+    "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c": {
+      "symbol": "rETH",
+      "name": "Rocket Pool ETH",
+      "decimals": 18
+    },
+    "0x940181a94a35a4569e4529a3cdfb74e38fd98631": {
+      "symbol": "AERO",
+      "name": "Aerodrome Finance",
+      "decimals": 18
+    },
+    "0x236aa50979d5f3de3bd1eeb40e81137f22ab794b": {
+      "symbol": "tBTC",
+      "name": "tBTC v2",
+      "decimals": 18
+    },
+    "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf": {
+      "symbol": "cbBTC",
+      "name": "Coinbase Wrapped BTC",
+      "decimals": 8
+    },
+    "0x0b3e328455c4059ebc0f79983c4149b50da2e2a7": {
+      "symbol": "BRETT",
+      "name": "Brett",
+      "decimals": 18
+    },
+    "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4": {
+      "symbol": "TOSHI",
+      "name": "Toshi",
+      "decimals": 18
+    },
+    "0x532f27101965dd16442e59d40670faf5ebb142e4": {
+      "symbol": "WELL",
+      "name": "Moonwell",
+      "decimals": 18
+    },
+    "0x4ed4e862860bed51a9570b96d89af5e1b0efefed": {
+      "symbol": "DEGEN",
+      "name": "Degen",
+      "decimals": 18
+    },
+    "0x0578d8a44db98b23bf096a382e016e29a5ce0ffe": {
+      "symbol": "HIGHER",
+      "name": "Higher",
+      "decimals": 18
+    },
+    "0xba0dda8762c24da9487f5fa026a9b64b695a07ea": {
+      "symbol": "OX",
+      "name": "OX Coin",
+      "decimals": 18
+    }
+  },
+  "solana": {
+    "native": {
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9
+    },
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": {
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6
+    },
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": {
+      "symbol": "USDT",
+      "name": "Tether USD",
+      "decimals": 6
+    },
+    "So11111111111111111111111111111111111111112": {
+      "symbol": "wSOL",
+      "name": "Wrapped SOL",
+      "decimals": 9
+    },
+    "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So": {
+      "symbol": "mSOL",
+      "name": "Marinade Staked SOL",
+      "decimals": 9
+    },
+    "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj": {
+      "symbol": "stSOL",
+      "name": "Lido Staked SOL",
+      "decimals": 9
+    },
+    "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn": {
+      "symbol": "JitoSOL",
+      "name": "Jito Staked SOL",
+      "decimals": 9
+    },
+    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": {
+      "symbol": "WETH",
+      "name": "Wormhole Wrapped Ether",
+      "decimals": 8
+    },
+    "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh": {
+      "symbol": "WBTC",
+      "name": "Wormhole Wrapped BTC",
+      "decimals": 8
+    },
+    "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263": {
+      "symbol": "BONK",
+      "name": "Bonk",
+      "decimals": 5
+    },
+    "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN": {
+      "symbol": "JUP",
+      "name": "Jupiter",
+      "decimals": 6
+    },
+    "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm": {
+      "symbol": "WIF",
+      "name": "dogwifhat",
+      "decimals": 6
+    },
+    "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3": {
+      "symbol": "PYTH",
+      "name": "Pyth Network",
+      "decimals": 6
+    },
+    "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof": {
+      "symbol": "RNDR",
+      "name": "Render Token",
+      "decimals": 8
+    },
+    "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL": {
+      "symbol": "JTO",
+      "name": "Jito",
+      "decimals": 9
+    },
+    "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5": {
+      "symbol": "MEW",
+      "name": "cat in a dogs world",
+      "decimals": 5
+    }
+  }
+}
