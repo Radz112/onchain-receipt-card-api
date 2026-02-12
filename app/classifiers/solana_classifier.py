@@ -10,6 +10,8 @@ from __future__ import annotations
 from app.models.action import Action, TokenInfo
 
 # Known program IDs for protocol labeling
+VOTE_PROGRAM = "Vote111111111111111111111111111111111111111"
+
 KNOWN_PROGRAMS: dict[str, str] = {
     "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4": "Jupiter",
     "JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB": "Jupiter",
@@ -50,11 +52,34 @@ def _identify_protocol(raw_tx: dict) -> str | None:
     return None
 
 
+def _is_vote_transaction(raw_tx: dict) -> bool:
+    """Check if this is a validator vote transaction."""
+    message = raw_tx.get("transaction", {}).get("message", {})
+    for key in message.get("accountKeys", []):
+        pubkey = key["pubkey"] if isinstance(key, dict) else str(key)
+        if pubkey == VOTE_PROGRAM:
+            return True
+    for ix in message.get("instructions", []):
+        if ix.get("programId", "") == VOTE_PROGRAM:
+            return True
+    return False
+
+
 def classify_solana_actions(raw_tx: dict) -> list[Action]:
     meta = raw_tx.get("meta", {})
     signer = _get_signer(raw_tx)
     if not signer:
         return []
+
+    # Edge case: Solana vote transaction
+    if _is_vote_transaction(raw_tx):
+        return [
+            Action(
+                type="contract_call",
+                note="Validator Vote",
+                from_=signer,
+            )
+        ]
 
     protocol = _identify_protocol(raw_tx)
 

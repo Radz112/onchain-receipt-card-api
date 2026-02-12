@@ -33,6 +33,15 @@ KNOWN_ROUTERS: dict[str, str] = {
     "0x1111111254eeb25477b68fb85ed929f73a960582": "1inch",
 }
 
+# Multicall function selector
+MULTICALL_SELECTOR = "0xac9650d8"
+
+# Known multisig contracts (Safe/Gnosis)
+KNOWN_MULTISIGS: set[str] = {
+    "0xd9db270c1b5e3bd161e8c8503c55ceabee709552",  # Safe 1.3.0
+    "0x69f4d1788e39c87893c980c06edf4b75dae3e3db",  # Safe L2 1.3.0
+}
+
 
 def _decode_address(topic_hex: str) -> str:
     return "0x" + topic_hex[-40:].lower()
@@ -57,6 +66,18 @@ def classify_evm_actions(raw_tx: dict) -> list[Action]:
 
     if not user:
         return []
+
+    # --- Edge case: contract creation (to is None, contractAddress in receipt) ---
+    contract_address = receipt.get("contractAddress")
+    if contract_address and not tx_data.get("to"):
+        return [
+            Action(
+                type="contract_call",
+                note=f"Contract Deployed: {contract_address}",
+                from_=user,
+                to=contract_address,
+            )
+        ]
 
     protocol = _identify_protocol(tx_data)
 
@@ -258,12 +279,27 @@ def classify_evm_actions(raw_tx: dict) -> list[Action]:
     if not actions:
         input_data = tx_data.get("input", "0x")
         selector = input_data[:10] if len(input_data) >= 10 else input_data
-        actions.append(
-            Action(
-                type="contract_call",
-                note=f"Function: {selector}",
-                to=tx_data.get("to"),
+
+        # Detect multicall/batch
+        if selector == MULTICALL_SELECTOR:
+            # Estimate call count from data length (each call ≈ 68+ bytes encoded)
+            data_len = (len(input_data) - 10) // 2  # hex chars to bytes
+            estimated_calls = max(1, data_len // 68)
+            actions.append(
+                Action(
+                    type="contract_call",
+                    note=f"Batch: ~{estimated_calls} calls",
+                    to=tx_data.get("to"),
+                    protocol=protocol,
+                )
             )
-        )
+        else:
+            actions.append(
+                Action(
+                    type="contract_call",
+                    note=f"Function: {selector}",
+                    to=tx_data.get("to"),
+                )
+            )
 
     return actions
