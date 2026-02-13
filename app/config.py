@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     helius_api_key: str = ""
     base_rpc_url_override: str = ""
     solana_rpc_url_override: str = ""
+    base_pay_to_address: str = ""
+    solana_pay_to_address: str = ""
 
     @property
     def base_rpc_url(self) -> str:
