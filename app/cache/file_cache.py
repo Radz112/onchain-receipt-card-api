@@ -1,20 +1,11 @@
-"""
-Filesystem-based cache for rendered receipt cards and summary JSON.
-
-Cache key format:
-  Image:   receipt:{chain}:{txHash}:{template}.png
-  Summary: receipt:{chain}:{txHash}.json
-
-Summary is shared across templates (same underlying data).
-Only PNG images are persisted; SVG is returned inline.
-"""
-
 from __future__ import annotations
 
 import json
-import os
+import logging
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # TTLs in seconds
 CONFIRMED_TTL = 30 * 86400  # 30 days
@@ -28,8 +19,6 @@ class FileCache:
     def __init__(self, cache_dir: Path | str | None = None):
         self._dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
         self._dir.mkdir(parents=True, exist_ok=True)
-
-    # --- Key helpers ---
 
     def _image_key(self, chain: str, tx_hash: str, template: str) -> str:
         return f"receipt_{chain}_{tx_hash}_{template}.png"
@@ -49,8 +38,6 @@ class FileCache:
         age = time.time() - path.stat().st_mtime
         return age > ttl
 
-    # --- Image cache (PNG only) ---
-
     def get_image(self, chain: str, tx_hash: str, template: str) -> bytes | None:
         path = self._path(self._image_key(chain, tx_hash, template))
         if not path.exists():
@@ -65,8 +52,6 @@ class FileCache:
         path.write_bytes(data)
         return path
 
-    # --- Summary cache (JSON) ---
-
     def get_summary(self, chain: str, tx_hash: str) -> dict | None:
         path = self._path(self._summary_key(chain, tx_hash))
         if not path.exists():
@@ -76,7 +61,8 @@ class FileCache:
             return None
         try:
             return json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Corrupt cache file %s, removing: %s", path, exc)
             path.unlink(missing_ok=True)
             return None
 
@@ -85,10 +71,7 @@ class FileCache:
         path.write_text(json.dumps(summary, default=str))
         return path
 
-    # --- Negative cache ---
-
     def get_negative(self, chain: str, tx_hash: str) -> str | None:
-        """Returns 'pending' or 'not_found' if negatively cached, else None."""
         path = self._path(self._negative_key(chain, tx_hash))
         if not path.exists():
             return None
@@ -100,11 +83,8 @@ class FileCache:
         return content
 
     def set_negative(self, chain: str, tx_hash: str, state: str) -> None:
-        """State should be 'pending' or 'not_found'."""
         path = self._path(self._negative_key(chain, tx_hash))
         path.write_text(state)
-
-    # --- Cleanup ---
 
     def clear(self) -> None:
         for f in self._dir.iterdir():
@@ -112,7 +92,6 @@ class FileCache:
                 f.unlink()
 
     def cleanup_expired(self) -> int:
-        """Remove expired entries. Returns count of removed files."""
         removed = 0
         for f in self._dir.iterdir():
             if not f.is_file():

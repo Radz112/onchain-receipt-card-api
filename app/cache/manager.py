@@ -28,7 +28,7 @@ class TransactionCache:
     def _key(chain: str, tx_hash: str) -> str:
         return f"{chain}:{tx_hash}"
 
-    def get(self, chain: str, tx_hash: str) -> NormalizedTransaction | None | type[_SENTINEL]:
+    def get(self, chain: str, tx_hash: str) -> NormalizedTransaction | None | object:
         key = self._key(chain, tx_hash)
         entry = self._store.get(key)
         if entry is None:

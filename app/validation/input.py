@@ -29,7 +29,7 @@ def validate_tx_hash(chain: str, tx_hash: str) -> str:
     elif chain == "solana":
         try:
             decoded = base58.b58decode(tx_hash)
-        except Exception:
+        except ValueError:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid Solana signature. Must be a valid base58 string.",

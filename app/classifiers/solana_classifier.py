@@ -1,15 +1,7 @@
-"""
-Solana action classifier using net token delta approach.
-
-Uses pre/postTokenBalances and pre/postBalances natively provided by Solana
-to compute per-account, per-mint deltas. No inner instruction parsing needed.
-"""
-
 from __future__ import annotations
 
 from app.models.action import Action, TokenInfo
 
-# Known program IDs for protocol labeling
 VOTE_PROGRAM = "Vote111111111111111111111111111111111111111"
 
 KNOWN_PROGRAMS: dict[str, str] = {
@@ -24,45 +16,45 @@ KNOWN_PROGRAMS: dict[str, str] = {
     "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY": "Phoenix",
 }
 
+_DUST_THRESHOLD = 0.000001
+
+
+def _get_pubkey(key) -> str:
+    return key["pubkey"] if isinstance(key, dict) else str(key)
+
+
+def _get_message(raw_tx: dict) -> dict:
+    return raw_tx.get("transaction", {}).get("message", {})
+
 
 def _get_signer(raw_tx: dict) -> str:
-    message = raw_tx.get("transaction", {}).get("message", {})
-    account_keys = message.get("accountKeys", [])
-    if account_keys:
-        first = account_keys[0]
-        return first["pubkey"] if isinstance(first, dict) else str(first)
-    return ""
+    account_keys = _get_message(raw_tx).get("accountKeys", [])
+    return _get_pubkey(account_keys[0]) if account_keys else ""
 
 
-def _identify_protocol(raw_tx: dict) -> str | None:
-    message = raw_tx.get("transaction", {}).get("message", {})
+def _find_program(raw_tx: dict, target: str | dict[str, str]) -> str | None:
+    message = _get_message(raw_tx)
+    lookup = target if isinstance(target, dict) else {target: target}
 
-    # Check account keys for known program IDs
     for key in message.get("accountKeys", []):
-        pubkey = key["pubkey"] if isinstance(key, dict) else str(key)
-        if pubkey in KNOWN_PROGRAMS:
-            return KNOWN_PROGRAMS[pubkey]
+        pubkey = _get_pubkey(key)
+        if pubkey in lookup:
+            return lookup[pubkey]
 
-    # Check instructions for program IDs
     for ix in message.get("instructions", []):
         program_id = ix.get("programId", "")
-        if program_id in KNOWN_PROGRAMS:
-            return KNOWN_PROGRAMS[program_id]
+        if program_id in lookup:
+            return lookup[program_id]
 
     return None
 
 
 def _is_vote_transaction(raw_tx: dict) -> bool:
-    """Check if this is a validator vote transaction."""
-    message = raw_tx.get("transaction", {}).get("message", {})
-    for key in message.get("accountKeys", []):
-        pubkey = key["pubkey"] if isinstance(key, dict) else str(key)
-        if pubkey == VOTE_PROGRAM:
-            return True
-    for ix in message.get("instructions", []):
-        if ix.get("programId", "") == VOTE_PROGRAM:
-            return True
-    return False
+    return _find_program(raw_tx, VOTE_PROGRAM) is not None
+
+
+def _identify_protocol(raw_tx: dict) -> str | None:
+    return _find_program(raw_tx, KNOWN_PROGRAMS)
 
 
 def classify_solana_actions(raw_tx: dict) -> list[Action]:
@@ -71,7 +63,6 @@ def classify_solana_actions(raw_tx: dict) -> list[Action]:
     if not signer:
         return []
 
-    # Edge case: Solana vote transaction
     if _is_vote_transaction(raw_tx):
         return [
             Action(
@@ -83,33 +74,25 @@ def classify_solana_actions(raw_tx: dict) -> list[Action]:
 
     protocol = _identify_protocol(raw_tx)
 
-    # --- Compute SPL token deltas for the signer ---
     pre_balances = meta.get("preTokenBalances", []) or []
     post_balances = meta.get("postTokenBalances", []) or []
 
-    # Build lookup: (accountIndex, mint) -> amount
     pre_map: dict[tuple[int, str], float] = {}
     post_map: dict[tuple[int, str], float] = {}
     mint_decimals: dict[str, int] = {}
-
-    # Get account keys to resolve owner from accountIndex
-    message = raw_tx.get("transaction", {}).get("message", {})
-    account_keys = message.get("accountKeys", [])
+    account_keys = _get_message(raw_tx).get("accountKeys", [])
 
     def _get_owner(balance_entry: dict) -> str:
         owner = balance_entry.get("owner", "")
         if owner:
             return owner
-        # Fallback: resolve from accountIndex
         idx = balance_entry.get("accountIndex", -1)
         if 0 <= idx < len(account_keys):
-            key = account_keys[idx]
-            return key["pubkey"] if isinstance(key, dict) else str(key)
+            return _get_pubkey(account_keys[idx])
         return ""
 
     for entry in pre_balances:
-        owner = _get_owner(entry)
-        if owner != signer:
+        if _get_owner(entry) != signer:
             continue
         mint = entry.get("mint", "")
         ui_amount = entry.get("uiTokenAmount", {})
@@ -120,8 +103,7 @@ def classify_solana_actions(raw_tx: dict) -> list[Action]:
         mint_decimals[mint] = decimals
 
     for entry in post_balances:
-        owner = _get_owner(entry)
-        if owner != signer:
+        if _get_owner(entry) != signer:
             continue
         mint = entry.get("mint", "")
         ui_amount = entry.get("uiTokenAmount", {})
@@ -131,42 +113,34 @@ def classify_solana_actions(raw_tx: dict) -> list[Action]:
         post_map[(idx, mint)] = amount
         mint_decimals[mint] = decimals
 
-    # Compute per-mint deltas
     all_keys = set(pre_map.keys()) | set(post_map.keys())
     mint_deltas: dict[str, float] = {}
     for key in all_keys:
         mint = key[1]
-        pre_val = pre_map.get(key, 0.0)
-        post_val = post_map.get(key, 0.0)
-        delta = post_val - pre_val
+        delta = post_map.get(key, 0.0) - pre_map.get(key, 0.0)
         mint_deltas[mint] = mint_deltas.get(mint, 0.0) + delta
 
-    # --- Compute native SOL delta ---
     pre_sol_balances = meta.get("preBalances", [])
     post_sol_balances = meta.get("postBalances", [])
     fee = meta.get("fee", 0)
 
     sol_delta = 0.0
     if pre_sol_balances and post_sol_balances:
-        # Index 0 = signer
-        pre_sol = pre_sol_balances[0] if pre_sol_balances else 0
-        post_sol = post_sol_balances[0] if post_sol_balances else 0
-        sol_delta = (post_sol - pre_sol + fee) / 1e9  # add fee back since it's not an "action"
+        sol_delta = (post_sol_balances[0] - pre_sol_balances[0] + fee) / 1e9
 
-    # --- Check for NFT transfers (decimals=0, amount=1) ---
     nft_actions: list[Action] = []
     nft_mints: set[str] = set()
     for mint, delta in list(mint_deltas.items()):
         decimals = mint_decimals.get(mint, 0)
-        if decimals == 0 and abs(delta) == 1.0:
+        if decimals == 0 and abs(round(delta)) == 1:
             nft_mints.add(mint)
             nft_actions.append(
                 Action(
                     type="nft_transfer",
-                    token_in=TokenInfo(address=mint, symbol=f"NFT", amount="1", decimals=0)
+                    token_in=TokenInfo(address=mint, symbol="NFT", amount="1", decimals=0)
                     if delta < 0
                     else None,
-                    token_out=TokenInfo(address=mint, symbol=f"NFT", amount="1", decimals=0)
+                    token_out=TokenInfo(address=mint, symbol="NFT", amount="1", decimals=0)
                     if delta > 0
                     else None,
                     from_=signer if delta < 0 else None,
@@ -175,18 +149,15 @@ def classify_solana_actions(raw_tx: dict) -> list[Action]:
                 )
             )
 
-    # Remove NFT mints from deltas
     for mint in nft_mints:
         mint_deltas.pop(mint, None)
 
-    # Add native SOL if meaningful
     NATIVE_KEY = "native_sol"
-    if abs(sol_delta) > 0.000001:
+    if abs(sol_delta) > _DUST_THRESHOLD:
         mint_deltas[NATIVE_KEY] = sol_delta
 
-    # --- Classify based on net deltas ---
-    negative = {k: v for k, v in mint_deltas.items() if v < -0.000001}
-    positive = {k: v for k, v in mint_deltas.items() if v > 0.000001}
+    negative = {k: v for k, v in mint_deltas.items() if v < -_DUST_THRESHOLD}
+    positive = {k: v for k, v in mint_deltas.items() if v > _DUST_THRESHOLD}
 
     actions: list[Action] = []
 

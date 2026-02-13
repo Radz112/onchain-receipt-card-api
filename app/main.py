@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
@@ -10,8 +8,6 @@ from app.fetchers import fetch_transaction
 from app.renderer.card import render_receipt_card
 from app.validation.input import validate_chain, validate_tx_hash
 
-logger = logging.getLogger(__name__)
-
 app = FastAPI(title="Onchain Receipt Card API", version="0.2.0")
 
 
@@ -20,8 +16,6 @@ class ReceiptRequest(BaseModel):
     template: str = "classic"
     format: str = "json"
 
-
-# ---------- GET endpoint info ----------
 
 @app.get("/v1/receipt/{chain}")
 async def receipt_info(chain: str):
@@ -40,21 +34,16 @@ async def receipt_info(chain: str):
     }
 
 
-# ---------- POST receipt generation ----------
-
 @app.post("/v1/receipt/{chain}")
 async def generate_receipt(chain: str, body: ReceiptRequest):
-    # 1. Validate input
     chain = validate_chain(chain)
     tx_hash = validate_tx_hash(chain, body.tx_hash)
     template = body.template if body.template in ("classic", "minimal", "dark") else "classic"
     fmt = body.format if body.format in ("json", "svg", "png") else "json"
 
-    # 2. Check file cache for image (PNG only) + summary
     if fmt == "png":
         cached_image = file_cache.get_image(chain, tx_hash, template)
         if cached_image:
-            cached_summary = file_cache.get_summary(chain, tx_hash)
             return Response(content=cached_image, media_type="image/png")
 
     if fmt == "json":
@@ -62,14 +51,12 @@ async def generate_receipt(chain: str, body: ReceiptRequest):
         if cached_summary:
             return _json_response(cached_summary, cached=True)
 
-    # 3. Check negative cache
     neg = file_cache.get_negative(chain, tx_hash)
     if neg == "pending":
         raise HTTPException(status_code=202, detail="Transaction pending confirmation. Try again shortly.")
     if neg == "not_found":
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # 4. Check in-memory tx cache, else fetch from RPC
     tx_data = tx_cache.get(chain, tx_hash)
     if tx_data is CACHE_MISS:
         tx_data = await fetch_transaction(chain, tx_hash)
@@ -79,7 +66,6 @@ async def generate_receipt(chain: str, body: ReceiptRequest):
         file_cache.set_negative(chain, tx_hash, "not_found")
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # 5. Handle pending
     if tx_data.status == "pending":
         file_cache.set_negative(chain, tx_hash, "pending")
         if fmt == "json":
@@ -89,23 +75,14 @@ async def generate_receipt(chain: str, body: ReceiptRequest):
             )
         raise HTTPException(status_code=202, detail="Transaction pending confirmation. Try again shortly.")
 
-    # 6. Render card (classifies actions, resolves tokens, renders SVG/PNG)
     tx_dict = tx_data.model_dump(mode="json")
+    card_data, summary = await render_receipt_card(tx_dict, template=template, format=fmt)
 
-    try:
-        card_data, summary = await render_receipt_card(tx_dict, template=template, format=fmt)
-    except Exception:
-        logger.exception("Card render failed for %s:%s", chain, tx_hash)
-        raise HTTPException(status_code=500, detail="Failed to generate receipt card. Please try again.")
-
-    # 7. Cache summary JSON (shared across templates)
     file_cache.set_summary(chain, tx_hash, summary)
 
-    # 8. Cache PNG to filesystem (SVG returned inline, not persisted)
     if fmt == "png" and isinstance(card_data, bytes):
         file_cache.set_image(chain, tx_hash, template, card_data)
 
-    # 9. Return
     if fmt == "svg":
         return Response(content=card_data, media_type="image/svg+xml")
     elif fmt == "png":
@@ -126,32 +103,22 @@ def _json_response(summary: dict, cached: bool) -> JSONResponse:
     })
 
 
-# ---------- OG Meta Page (Phase 7: Viral Loop) ----------
-
 @app.get("/receipt/{chain}/{tx_hash}", response_class=HTMLResponse)
 async def receipt_page(chain: str, tx_hash: str):
-    """
-    Public receipt page with OG meta tags for social embed previews.
-    Serves HTML that X/Discord/Telegram crawlers will parse for auto-embedding.
-    """
     try:
         chain = validate_chain(chain)
         tx_hash = validate_tx_hash(chain, tx_hash)
     except HTTPException:
         return HTMLResponse(content=_error_html("Invalid chain or transaction hash"), status_code=400)
 
-    # Try cached summary first (fast path for OG pages)
     summary = file_cache.get_summary(chain, tx_hash)
 
     if summary:
         title = _build_og_title(summary)
-        status = summary.get("status", "confirmed")
     else:
         title = f"Transaction on {chain.title()}"
-        status = "confirmed"
 
     image_url = f"/v1/receipt/{chain}/card/{tx_hash}/classic.png"
-    page_url = f"/receipt/{chain}/{tx_hash}"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -203,11 +170,8 @@ async def receipt_page(chain: str, tx_hash: str):
     return HTMLResponse(content=html)
 
 
-# ---------- Direct card image endpoint (for OG image tags) ----------
-
 @app.get("/v1/receipt/{chain}/card/{tx_hash}/{template}.png")
 async def receipt_card_image(chain: str, tx_hash: str, template: str):
-    """Direct PNG endpoint for OG image tags and direct linking."""
     try:
         chain = validate_chain(chain)
         tx_hash = validate_tx_hash(chain, tx_hash)
@@ -216,12 +180,10 @@ async def receipt_card_image(chain: str, tx_hash: str, template: str):
 
     template = template if template in ("classic", "minimal", "dark") else "classic"
 
-    # Check file cache
     cached_image = file_cache.get_image(chain, tx_hash, template)
     if cached_image:
         return Response(content=cached_image, media_type="image/png")
 
-    # Fetch + render on demand
     tx_data = tx_cache.get(chain, tx_hash)
     if tx_data is CACHE_MISS:
         tx_data = await fetch_transaction(chain, tx_hash)
@@ -238,8 +200,6 @@ async def receipt_card_image(chain: str, tx_hash: str, template: str):
 
     return Response(content=card_data, media_type="image/png")
 
-
-# ---------- Helpers ----------
 
 def _build_og_title(summary: dict) -> str:
     label = summary.get("action_label", "")

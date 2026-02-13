@@ -10,8 +10,6 @@ def clear_cache():
     tx_cache.clear()
 
 
-# --- Mock RPC responses ---
-
 MOCK_BASE_TX = {
     "jsonrpc": "2.0",
     "id": 1,

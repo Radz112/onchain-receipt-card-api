@@ -1,10 +1,3 @@
-"""
-Pure-function SVG receipt card builder.
-No external dependencies, no DOM, no headless browser.
-All text embedded with system-safe fonts. All icons are SVG paths.
-Token visuals = deterministic colored circles with first letter.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -16,7 +9,6 @@ from app.renderer.templates import (
     CHAIN_COLORS,
     STATUS_COLORS,
     TEMPLATES,
-    TemplateColors,
 )
 
 WIDTH = 1200
@@ -40,12 +32,10 @@ def _truncate_address(address: str) -> str:
 
 
 def _token_color(address: str) -> str:
-    """Deterministic color for a token based on its address hash."""
     h = hashlib.md5(address.encode()).hexdigest()
     r = int(h[0:2], 16)
     g = int(h[2:4], 16)
     b = int(h[4:6], 16)
-    # Ensure decent saturation by boosting the values
     r = 80 + (r % 176)
     g = 80 + (g % 176)
     b = 80 + (b % 176)
@@ -53,7 +43,6 @@ def _token_color(address: str) -> str:
 
 
 def _format_action_text(action: Action) -> tuple[str, str]:
-    """Returns (action_label, detail_text)."""
     if action.type == "swap":
         in_sym = action.token_in.symbol if action.token_in else "?"
         in_amt = action.token_in.amount if action.token_in else "?"
@@ -93,7 +82,6 @@ def _format_action_text(action: Action) -> tuple[str, str]:
 
 
 def _format_amount(raw: str) -> str:
-    """Format a raw amount string to a readable number."""
     try:
         val = float(raw)
     except (ValueError, TypeError):
@@ -158,10 +146,8 @@ def render_receipt_svg(
     primary_action = actions[0] if actions else Action(type="contract_call", primary=True)
     action_label, action_detail = _format_action_text(primary_action)
 
-    # Build SVG
     parts: list[str] = []
 
-    # Header
     parts.append(f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" width="{WIDTH}" height="{HEIGHT}">
 <defs>
   <style>
@@ -181,7 +167,6 @@ def render_receipt_svg(
 <rect x="1" y="1" width="{WIDTH - 2}" height="{HEIGHT - 2}" rx="15" fill="none" stroke="{colors.border}" stroke-width="1"/>
 """)
 
-    # Chain logo circle + header text
     parts.append(f"""<!-- Header -->
 <circle cx="60" cy="52" r="18" fill="{chain_color}"/>
 <text x="60" y="58" text-anchor="middle" fill="white" font-size="14" font-weight="bold" font-family="Arial">{_escape_xml(chain[0].upper())}</text>
@@ -189,18 +174,15 @@ def render_receipt_svg(
 <text x="90" y="66" class="title">ONCHAIN RECEIPT</text>
 """)
 
-    # Status badge
     parts.append(f"""<!-- Status -->
 <rect x="{WIDTH - 200}" y="32" width="160" height="36" rx="18" fill="{status_color}" opacity="0.15"/>
 <circle cx="{WIDTH - 180}" cy="50" r="5" fill="{status_color}"/>
 <text x="{WIDTH - 166}" y="55" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="bold" fill="{status_color}">{status_label}</text>
 """)
 
-    # Divider
     parts.append(f"""<line x1="40" y1="90" x2="{WIDTH - 40}" y2="90" stroke="{colors.divider}" stroke-width="1"/>
 """)
 
-    # Action icon + label + detail
     y_action = 140
     parts.append(_render_action_icon(44, y_action - 16, primary_action.type, chain_color))
 
@@ -208,13 +190,11 @@ def render_receipt_svg(
 <text x="85" y="{y_action + 36}" class="action-detail">{_escape_xml(action_detail)}</text>
 """)
 
-    # Protocol label
     protocol_text = primary_action.protocol or ""
     if protocol_text:
         parts.append(f"""<text x="85" y="{y_action + 64}" class="protocol">via {_escape_xml(protocol_text)}</text>
 """)
 
-    # Token circles
     y_tokens = y_action + 96
     token_circles = []
     if primary_action.token_in:
@@ -227,12 +207,10 @@ def render_receipt_svg(
             _render_token_circle(65 + offset, y_tokens, primary_action.token_out.symbol, primary_action.token_out.address)
         )
     if primary_action.token_in and primary_action.token_out:
-        # Arrow between circles
         token_circles.insert(1, f'<text x="110" y="{y_tokens + 6}" font-size="20" fill="{colors.text_secondary}" font-family="Arial">→</text>')
 
     parts.extend(token_circles)
 
-    # Transaction details
     y_details = 380
     parts.append(f"""<!-- Details -->
 <line x1="40" y1="{y_details - 20}" x2="{WIDTH - 40}" y2="{y_details - 20}" stroke="{colors.divider}" stroke-width="1"/>
@@ -246,13 +224,11 @@ def render_receipt_svg(
 <text x="440" y="{y_details + 10}" class="value">{_escape_xml(_truncate_address(tx_hash))}</text>
 """)
 
-    # Block + timestamp
     y_footer = HEIGHT - 75
     parts.append(f"""<line x1="40" y1="{y_footer - 10}" x2="{WIDTH - 40}" y2="{y_footer - 10}" stroke="{colors.divider}" stroke-width="1"/>
 <text x="60" y="{y_footer + 16}" class="label">{_escape_xml(block_text)}  ·  {_escape_xml(block_time_text)}</text>
 """)
 
-    # Powered by footer
     parts.append(f"""<text x="{WIDTH // 2}" y="{HEIGHT - 20}" text-anchor="middle" class="footer">powered by APIX402</text>
 """)
 

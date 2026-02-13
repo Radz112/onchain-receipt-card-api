@@ -1,5 +1,3 @@
-"""Template color schemes and constants for receipt card rendering."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +10,6 @@ class TemplateColors:
     text_secondary: str
     accent: str
     border: str
-    card_bg: str
     divider: str
 
 
@@ -21,9 +18,8 @@ TEMPLATES: dict[str, TemplateColors] = {
         background="#FFFFFF",
         text_primary="#1A1A2E",
         text_secondary="#6B7280",
-        accent="#0052FF",  # Base blue default, overridden by chain
+        accent="#0052FF",
         border="#E5E7EB",
-        card_bg="#F9FAFB",
         divider="#E5E7EB",
     ),
     "minimal": TemplateColors(
@@ -32,7 +28,6 @@ TEMPLATES: dict[str, TemplateColors] = {
         text_secondary="#8B949E",
         accent="#58A6FF",
         border="#30363D",
-        card_bg="#161B22",
         divider="#30363D",
     ),
     "dark": TemplateColors(
@@ -41,7 +36,6 @@ TEMPLATES: dict[str, TemplateColors] = {
         text_secondary="#9CA3AF",
         accent="#00FF88",
         border="#1F2937",
-        card_bg="#111118",
         divider="#1F2937",
     ),
 }
@@ -51,7 +45,6 @@ CHAIN_COLORS = {
     "solana": "#9945FF",
 }
 
-# Action type icons as SVG path data
 ACTION_ICONS: dict[str, str] = {
     "swap": '<path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" fill="{color}"/>',
     "transfer": '<path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" fill="{color}"/>',

@@ -1,8 +1,11 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import httpx
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.models.transaction import FeeInfo, NormalizedTransaction
@@ -61,7 +64,7 @@ async def fetch_base_transaction(tx_hash: str) -> NormalizedTransaction:
                     int(block_data["timestamp"], 16), tz=timezone.utc
                 )
         except httpx.TimeoutException:
-            pass
+            logger.debug("Block timestamp fetch timed out for block %s", block_number_hex)
 
     gas_used = int(receipt_data["gasUsed"], 16)
     effective_gas_price = int(receipt_data.get("effectiveGasPrice", "0x0"), 16)

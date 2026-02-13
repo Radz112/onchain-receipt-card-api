@@ -20,11 +20,6 @@ TX_HASH = "0x" + "ab" * 32
 @respx.mock
 async def test_confirmed_transaction():
     url = settings.base_rpc_url
-    route = respx.post(url).side_effect = [
-        httpx.Response(200, json=MOCK_BASE_TX),
-        httpx.Response(200, json=MOCK_BASE_RECEIPT),
-        httpx.Response(200, json=MOCK_BASE_BLOCK),
-    ]
     respx.post(url).side_effect = [
         httpx.Response(200, json=MOCK_BASE_TX),
         httpx.Response(200, json=MOCK_BASE_RECEIPT),

@@ -34,5 +34,3 @@ class Action(BaseModel):
     from_: str | None = None
     count: int | None = None
     note: str | None = None
-
-    model_config = {"populate_by_name": True}

@@ -1,5 +1,6 @@
 """Tests for edge case detection in classifiers."""
 
+from app.classifiers import normalize_actions
 from app.classifiers.evm_classifier import classify_evm_actions
 from app.classifiers.solana_classifier import classify_solana_actions
 
@@ -109,7 +110,7 @@ class TestFailedTransaction:
             "receipt": {"from": USER, "status": "0x0", "logs": []},
         }
         actions = classify_evm_actions(raw)
-        assert len(actions) >= 1
+        assert len(actions) == 1
         assert actions[0].type == "contract_call"
 
 
@@ -123,3 +124,74 @@ class TestPureNativeTransfer:
         actions = classify_evm_actions(raw)
         assert actions[0].type == "transfer"
         assert actions[0].token_in.address == "native"
+
+
+class TestNormalizeActions:
+    def test_primary_flag_set_on_first(self):
+        raw = {
+            "transaction": {"from": USER, "to": OTHER, "value": "0xde0b6b3a7640000", "input": "0x"},
+            "receipt": {"from": USER, "logs": []},
+        }
+        actions = normalize_actions(raw, "base")
+        assert actions[0].primary is True
+
+    def test_overflow_truncation(self):
+        """More than 5 actions should be capped with overflow marker."""
+        raw = {
+            "transaction": {"from": USER, "to": OTHER, "value": "0x0", "input": "0x"},
+            "receipt": {
+                "from": USER,
+                "logs": [
+                    {
+                        "address": f"0x{'0' * 39}{i}",
+                        "topics": [
+                            TRANSFER_TOPIC,
+                            _pad_address(f"0x{'0' * 39}{i}"),
+                            _pad_address(USER),
+                        ],
+                        "data": hex(1000000 * (i + 1)),
+                    }
+                    for i in range(7)
+                ],
+            },
+        }
+        actions = normalize_actions(raw, "base")
+        assert len(actions) == 5
+        assert actions[-1].type == "overflow"
+        assert actions[-1].count == 3
+
+    def test_exactly_max_actions_no_overflow(self):
+        """Exactly MAX_DISPLAY_ACTIONS should not trigger overflow."""
+        raw = {
+            "transaction": {"from": USER, "to": OTHER, "value": "0x0", "input": "0x"},
+            "receipt": {
+                "from": USER,
+                "logs": [
+                    {
+                        "address": f"0x{'0' * 39}{i}",
+                        "topics": [
+                            TRANSFER_TOPIC,
+                            _pad_address(f"0x{'0' * 39}{i}"),
+                            _pad_address(USER),
+                        ],
+                        "data": hex(1000000 * (i + 1)),
+                    }
+                    for i in range(5)
+                ],
+            },
+        }
+        actions = normalize_actions(raw, "base")
+        assert all(a.type != "overflow" for a in actions)
+
+    def test_unknown_chain_returns_contract_call(self):
+        actions = normalize_actions({}, "ethereum")
+        assert len(actions) == 1
+        assert actions[0].type == "contract_call"
+        assert actions[0].primary is True
+
+    def test_empty_actions_returns_fallback(self):
+        """If classifier returns empty list, normalize should return contract_call."""
+        raw = {"transaction": {}, "receipt": {"logs": []}}
+        actions = normalize_actions(raw, "base")
+        assert len(actions) >= 1
+        assert actions[0].primary is True
