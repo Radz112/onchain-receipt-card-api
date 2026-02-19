@@ -1,7 +1,9 @@
 import logging
+import re
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+import base58
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
@@ -10,6 +12,8 @@ from app.cache.manager import CACHE_MISS, tx_cache
 from app.fetchers import fetch_transaction
 from app.renderer.card import render_receipt_card
 from app.validation.input import validate_chain, validate_tx_hash
+
+EVM_TX_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -284,6 +288,51 @@ async def receipt_card_image(chain: str, tx_hash: str, template: str):
     file_cache.set_summary(chain, tx_hash, summary)
     file_cache.set_image(chain, tx_hash, template, card_data)
 
+    return Response(content=card_data, media_type="image/png")
+
+
+def _detect_chain(tx_hash: str) -> str:
+    """Auto-detect chain from tx hash format."""
+    if EVM_TX_RE.match(tx_hash):
+        return "base"
+    try:
+        decoded = base58.b58decode(tx_hash)
+        if len(decoded) == 64:
+            return "solana"
+    except Exception:
+        pass
+    raise HTTPException(status_code=400, detail="Cannot detect chain from tx hash format")
+
+
+@app.get("/{tx_hash}")
+async def short_image_route(tx_hash: str, template: str = Query(default="classic")):
+    """Short-path image route for APIX: /{tx_hash}?template=dark"""
+    logger.info("SHORT PATH: /%s?template=%s", tx_hash[:16], template)
+    chain = _detect_chain(tx_hash)
+    validate_tx_hash(chain, tx_hash)
+    template = template if template in ("classic", "minimal", "dark") else "classic"
+
+    cached_image = file_cache.get_image(chain, tx_hash, template)
+    if cached_image:
+        logger.info("SHORT PATH CACHE HIT for %s/%s/%s", chain, tx_hash[:12], template)
+        return Response(content=cached_image, media_type="image/png")
+
+    tx_data = tx_cache.get(chain, tx_hash)
+    if tx_data is CACHE_MISS:
+        logger.info("SHORT PATH: fetching %s/%s from RPC", chain, tx_hash[:12])
+        tx_data = await fetch_transaction(chain, tx_hash)
+        tx_cache.set(chain, tx_hash, tx_data)
+
+    if tx_data is None or tx_data.status == "pending":
+        raise HTTPException(status_code=404, detail="Transaction not available for rendering")
+
+    tx_dict = tx_data.model_dump(mode="json")
+    card_data, summary = await render_receipt_card(tx_dict, template=template, format="png")
+
+    file_cache.set_summary(chain, tx_hash, summary)
+    file_cache.set_image(chain, tx_hash, template, card_data)
+
+    logger.info("SHORT PATH: rendered and cached %s/%s/%s", chain, tx_hash[:12], template)
     return Response(content=card_data, media_type="image/png")
 
 
