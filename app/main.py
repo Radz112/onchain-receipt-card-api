@@ -1,4 +1,7 @@
-from fastapi import FastAPI, HTTPException
+import logging
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
@@ -8,17 +11,72 @@ from app.fetchers import fetch_transaction
 from app.renderer.card import render_receipt_card
 from app.validation.input import validate_chain, validate_tx_hash
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("app.main")
+
 app = FastAPI(title="Onchain Receipt Card API", version="0.2.0")
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    body_bytes = await request.body()
+    body_text = body_bytes.decode("utf-8", errors="replace")[:2000]
+    logger.info(
+        "INCOMING REQUEST: %s %s | content-type=%s | body=%s",
+        request.method,
+        request.url.path,
+        request.headers.get("content-type", "MISSING"),
+        body_text or "(empty)",
+    )
+    logger.info(
+        "REQUEST HEADERS: %s",
+        dict(request.headers),
+    )
+    response = await call_next(request)
+    logger.info(
+        "RESPONSE: %s %s -> %s",
+        request.method,
+        request.url.path,
+        response.status_code,
+    )
+    return response
+
+
 class ReceiptRequest(BaseModel):
-    tx_hash: str
+    tx_hash: Optional[str] = None
+    query: Optional[str] = None
+    prompt: Optional[str] = None
+    body: Optional[dict] = None
     template: str = "classic"
     format: str = "json"
 
 
+def _unwrap_apix_body(body: ReceiptRequest) -> ReceiptRequest:
+    """Handle APIX agent quirks: nested body.body wrapping and query/prompt aliases."""
+    if body.body and isinstance(body.body, dict):
+        logger.info("APIX UNWRAP: detected nested body: %s", body.body)
+        inner = body.body
+        if not body.tx_hash:
+            body.tx_hash = inner.get("tx_hash") or inner.get("query") or inner.get("prompt")
+        if body.template == "classic" and inner.get("template"):
+            body.template = inner["template"]
+        if body.format == "json" and inner.get("format"):
+            body.format = inner["format"]
+
+    if not body.tx_hash:
+        body.tx_hash = body.query or body.prompt
+        if body.tx_hash:
+            logger.info("APIX ALIAS: used query/prompt as tx_hash: %s", body.tx_hash)
+
+    return body
+
+
 @app.get("/v1/receipt/{chain}")
 async def receipt_info(chain: str):
+    logger.info("GET /v1/receipt/%s (info endpoint)", chain)
     chain = validate_chain(chain)
     return {
         "chain": chain,
@@ -36,37 +94,64 @@ async def receipt_info(chain: str):
 
 @app.post("/v1/receipt/{chain}")
 async def generate_receipt(chain: str, body: ReceiptRequest):
+    logger.info("POST /v1/receipt/%s | raw body fields: tx_hash=%s, query=%s, prompt=%s, nested_body=%s, template=%s, format=%s",
+                chain, body.tx_hash, body.query, body.prompt, body.body, body.template, body.format)
+
+    body = _unwrap_apix_body(body)
+
+    if not body.tx_hash:
+        logger.error("NO tx_hash after unwrapping. Full body model: %s", body.model_dump())
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Missing tx_hash",
+                "hint": "Send {\"tx_hash\": \"0x...\"}. Also accepted: query or prompt fields.",
+                "received_body": body.model_dump(),
+            },
+        )
+
     chain = validate_chain(chain)
     tx_hash = validate_tx_hash(chain, body.tx_hash)
     template = body.template if body.template in ("classic", "minimal", "dark") else "classic"
     fmt = body.format if body.format in ("json", "svg", "png") else "json"
 
+    logger.info("VALIDATED: chain=%s tx_hash=%s template=%s format=%s", chain, tx_hash, template, fmt)
+
     if fmt == "png":
         cached_image = file_cache.get_image(chain, tx_hash, template)
         if cached_image:
+            logger.info("CACHE HIT (png image) for %s/%s/%s", chain, tx_hash[:12], template)
             return Response(content=cached_image, media_type="image/png")
 
     if fmt == "json":
         cached_summary = file_cache.get_summary(chain, tx_hash)
         if cached_summary:
+            logger.info("CACHE HIT (json summary) for %s/%s", chain, tx_hash[:12])
             return _json_response(cached_summary, cached=True)
 
     neg = file_cache.get_negative(chain, tx_hash)
     if neg == "pending":
+        logger.info("NEGATIVE CACHE: pending for %s/%s", chain, tx_hash[:12])
         raise HTTPException(status_code=202, detail="Transaction pending confirmation. Try again shortly.")
     if neg == "not_found":
+        logger.info("NEGATIVE CACHE: not_found for %s/%s", chain, tx_hash[:12])
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     tx_data = tx_cache.get(chain, tx_hash)
     if tx_data is CACHE_MISS:
+        logger.info("CACHE MISS (memory): fetching %s/%s from RPC", chain, tx_hash[:12])
         tx_data = await fetch_transaction(chain, tx_hash)
         tx_cache.set(chain, tx_hash, tx_data)
+    else:
+        logger.info("CACHE HIT (memory) for %s/%s", chain, tx_hash[:12])
 
     if tx_data is None:
+        logger.warning("RPC returned None for %s/%s", chain, tx_hash[:12])
         file_cache.set_negative(chain, tx_hash, "not_found")
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     if tx_data.status == "pending":
+        logger.info("Transaction pending: %s/%s", chain, tx_hash[:12])
         file_cache.set_negative(chain, tx_hash, "pending")
         if fmt == "json":
             return JSONResponse(
@@ -75,6 +160,7 @@ async def generate_receipt(chain: str, body: ReceiptRequest):
             )
         raise HTTPException(status_code=202, detail="Transaction pending confirmation. Try again shortly.")
 
+    logger.info("RENDERING card for %s/%s (template=%s, format=%s)", chain, tx_hash[:12], template, fmt)
     tx_dict = tx_data.model_dump(mode="json")
     card_data, summary = await render_receipt_card(tx_dict, template=template, format=fmt)
 

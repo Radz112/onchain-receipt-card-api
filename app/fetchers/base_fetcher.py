@@ -19,6 +19,7 @@ def _rpc_payload(method: str, params: list, req_id: int = 1) -> dict:
 
 async def fetch_base_transaction(tx_hash: str) -> NormalizedTransaction:
     url = settings.base_rpc_url
+    logger.info("BASE RPC: fetching tx %s... from %s", tx_hash[:12], url.split("/v2")[0])
 
     async with httpx.AsyncClient(timeout=RPC_TIMEOUT) as client:
         try:
@@ -27,12 +28,22 @@ async def fetch_base_transaction(tx_hash: str) -> NormalizedTransaction:
                 client.post(url, json=_rpc_payload("eth_getTransactionReceipt", [tx_hash], 2)),
             )
         except httpx.TimeoutException:
+            logger.error("BASE RPC TIMEOUT for %s...", tx_hash[:12])
             raise HTTPException(status_code=504, detail="RPC request timed out")
 
-    tx_data = tx_resp.json().get("result")
-    receipt_data = receipt_resp.json().get("result")
+    logger.info("BASE RPC RESPONSE: tx_status=%s receipt_status=%s", tx_resp.status_code, receipt_resp.status_code)
+    tx_json = tx_resp.json()
+    receipt_json = receipt_resp.json()
+    if tx_json.get("error"):
+        logger.error("BASE RPC ERROR (tx): %s", tx_json["error"])
+    if receipt_json.get("error"):
+        logger.error("BASE RPC ERROR (receipt): %s", receipt_json["error"])
+
+    tx_data = tx_json.get("result")
+    receipt_data = receipt_json.get("result")
 
     if tx_data is None and receipt_data is None:
+        logger.warning("BASE RPC: both tx and receipt are None for %s...", tx_hash[:12])
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     if tx_data is not None and receipt_data is None:
