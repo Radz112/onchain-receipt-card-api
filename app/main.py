@@ -75,6 +75,14 @@ def _unwrap_apix_body(body: ReceiptRequest) -> ReceiptRequest:
         if body.tx_hash:
             logger.info("APIX ALIAS: used query/prompt as tx_hash: %s", body.tx_hash)
 
+    # Strip key=value prefixes that APIX agents sometimes include
+    if body.tx_hash:
+        for prefix in ("tx_hash=", "query=", "prompt="):
+            if body.tx_hash.startswith(prefix):
+                body.tx_hash = body.tx_hash[len(prefix):]
+                logger.info("APIX STRIP: removed '%s' prefix, tx_hash now: %s", prefix, body.tx_hash)
+                break
+
     return body
 
 
