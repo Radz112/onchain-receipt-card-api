@@ -55,7 +55,7 @@ class ReceiptRequest(BaseModel):
     prompt: Optional[str] = None
     body: Optional[dict] = None
     template: str = "classic"
-    format: str = "json"
+    format: str = "png"
 
 
 def _unwrap_apix_body(body: ReceiptRequest) -> ReceiptRequest:
